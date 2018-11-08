@@ -11,6 +11,9 @@
 	-- 1. Database Manager ( all priveleges )
 	-- 2. Server User ( possible IsAdmin )
 
+--TODO: Drop database if it exists for easy recreation.
+CREATE DATABASE ALTTeam;
+
 CREATE TABLE Teams(
 	TeamID		int				CONSTRAINT teamid_pk PRIMARY KEY,  -- IDENTITY(1,1)
 	TeamName	nvarchar(30)	CONSTRAINT teamname_nn NOT NULL
@@ -21,36 +24,36 @@ CREATE TABLE Users(
 	UserID			int					CONSTRAINT user_userid_pk PRIMARY KEY,	-- IDENTITY(1,1)
 	FirstName		nvarchar(30)		CONSTRAINT user_fname_nn NOT NULL,
 	LastName		nvarchar(30)		CONSTRAINT user_lname_nn NOT NULL,
-	PreferredName	nvarchar(30)		CONSTRAINT user_prefname_unn UNIQUE NOT NULL,
-	IsAdmin			bit	
-	-- Password
-	-- compound unique FirstName LastName? how else to take care of people w/same names?
+	--Maybe have Prefereed use FirstName as default value?
+	PreferredName	nvarchar(30)		CONSTRAINT user_prefname_nn NOT NULL,
+	Password	varchar(30)		CONSTRAINT user_pswd_nn NOT NULL,
+	IsAdmin			bit,
+	CONSTRAINT users_compfl_uk UNIQUE (FirstName, LastName),
+	CONSTRAINT users_comppl_uk UNIQUE (PreferredName. LastName)
 );
 
 CREATE TABLE TeamStudent(
-	TeamID		int		CONSTRAINT ts_teamid_pk PRIMARY KEY,	
-		-- Not the PK ( team needs multi users )
-		-- Needs to be FK
-	UserID		int		CONSTRAINT teamstudent_user_nnfk NOT NULL REFERENCES Users(UserID)
-		-- UNIQUE and Compound PK
-		-- OR add nullable teamID to Users and remove TeamStudent
+	TeamID		int		CONSTRAINT teamstudent_team_nnfk NOT NULL REFERENCES Teams(TeamID),
+	-- TODO: Separate constraints.
+	UserID		int		CONSTRAINT teamstudent_user_uknnfk UNIQUE NOT NULL REFERENCES Users(UserID),
+	CONSTRAINT teamstudent_pk PRIMARY KEY (TeamID, UserID)
 );
 
-CREATE TABLE Rubric( -- Rubrics
+CREATE TABLE Rubrics(
 	RubricID	int				CONSTRAINT rubricid_pk PRIMARY KEY,	-- IDENTITY(1,1)
 	RubricName	varchar(15)		CONSTRAINT rubricname_nn NOT NULL
 );
 
-CREATE TABLE Section(
+CREATE TABLE Sections(
 	SectionID	int				CONSTRAINT sectionid_pk PRIMARY KEY,	-- IDENTITY(1,1)
-	RubricID	int				CONSTRAINT section_rubric_nnfk NOT NULL REFERENCES Rubric(RubricID),
+	RubricID	int				CONSTRAINT section_rubric_nnfk NOT NULL REFERENCES Rubrics(RubricID),
 	SectionName	varchar(20)		CONSTRAINT sectioname_nn NOT NULL
 );
 
--- Renamed Option to SectionOption because of reserved keyword.
-CREATE TABLE SectionOption( -- Options
+-- Renamed Option to Options because of reserved keyword.
+CREATE TABLE Options(
 	OptionID	int				CONSTRAINT optionid_pk PRIMARY KEY,	-- IDENTITY(1,1)
-	SectionID	int				CONSTRAINT sectopt_section_nnfk NOT NULL REFERENCES Section(SectionID),
+	SectionID	int				CONSTRAINT sectopt_section_nnfk NOT NULL REFERENCES Sections(SectionID),
 	OptionText	varchar(50)		CONSTRAINT optiontext_nn NOT NULL
 );
 
@@ -70,7 +73,7 @@ BEGIN
 		SectionID int
 	)
 	SET @result = (SELECT OptionID, SectionID
-		    FROM SectionOption
+		    FROM Options
 		    WHERE OptionID = InputOptionID AND SectionID = InputSectionID);
 	--Unknown if I can just return the check itself.
 	IF (@result IS NULL)
@@ -79,7 +82,7 @@ BEGIN
 	    SET @ret = 1; -- This was a valid option section combo.
 
 	-- IF (SELECT OptionID, SectionID
-	--	    FROM SectionOption
+	--	    FROM Options
 	--	    WHERE OptionID = InputOptionID AND SectionID = InputSectionID) IS NULL
 	--			RETURN 0;
 	-- ELSE RETURN 1;
@@ -126,27 +129,26 @@ CREATE TABLE StudentEval(
 	Evaluator	int		CONSTRAINT seval_student1_nnfk NOT NULL REFERENCES Users(UserID),
 	Evaluatee	int		CONSTRAINT seval_student2_nnfk REFERENCES Users(UserID),
 	SectionID	int,
-	OptionID	int		CONSTRAINT seval_option_nnfk NOT NULL REFERENCES SectionOption(OptionID),
+	OptionID	int		CONSTRAINT seval_option_nnfk NOT NULL REFERENCES Options(OptionID),
 	CONSTRAINT seval_comp_pk PRIMARY KEY (Evaluator, Evaluatee, SectionID),
-	CONSTRAINT seval_isvalid CHECK (dbo.IsValidOptionSection(OptionID, SectionID) = 1)
-	-- Should we also ensure Evaluator & Evaluatee are not on the same team?		If you want to
+	CONSTRAINT seval_isvalid CHECK (dbo.IsValidOptionSection(OptionID, SectionID) = 1
 );
-
+--TODO: Merge Peer and StudentEval into one table, because checks can be done in procedures.
 CREATE TABLE PeerEval(
 	Evaluator	int		CONSTRAINT peval_student1_nnfk NOT NULL REFERENCES Users(UserID),
 	Evaluatee	int		CONSTRAINT peval_student2_fk REFERENCES Users(UserID),
 	SectionID	int,
-	OptionID	int		CONSTRAINT peval_option_nnfk NOT NULL REFERENCES SectionOption(OptionID),
+	OptionID	int		CONSTRAINT peval_option_nnfk NOT NULL REFERENCES Options(OptionID),
 	CONSTRAINT peval_comp_pk PRIMARY KEY (Evaluator, Evaluatee, SectionID),
-	CONSTRAINT peval_isonteam CHECK (dbo.IsInSameTeam(Evaluator, Evaluatee) = 1),
+	CONSTRAINT peval_isonteam CHECK (dbo.IsInSameTeam(Evaluator, Evaluatee) = 1), -- Replace with check in Student_EvalForm.
 	CONSTRAINT peval_isvalid CHECK (dbo.IsValidOptionSection(OptionID, SectionID) = 1)
 );
 
 CREATE TABLE TeamEval(
 	Evaluator	int		CONSTRAINT teval_student_nnfk NOT NULL REFERENCES Users(UserID),
-	Evaluatee	int		CONSTRAINT teval_team_fk REFERENCES Team(TeamID),
+	Evaluatee	int		CONSTRAINT teval_team_fk REFERENCES Teams(TeamID),
 	SectionID	int,
-	OptionID	int		CONSTRAINT teval_option_nnfk NOT NULL REFERENCES SectionOption(OptionID),
+	OptionID	int		CONSTRAINT teval_option_nnfk NOT NULL REFERENCES Options(OptionID),
 	CONSTRAINT teval_comp_pk PRIMARY KEY (Evaluator, Evaluatee, SectionID),
 	CONSTRAINT teval_isvalid CHECK (dbo.IsValidOptionSection(OptionID, SectionID) = 1)
 );
@@ -199,7 +201,7 @@ IF (SELECT TOP 1 IsAdmin FROM Users WHERE UserID = @ThisUserID ) = 1
 			SET @IsAdmin = 0
 			END
 		INSERT INTO Users (FirstName, LastName, UserName, IsAdmin)
-			VALUES ( @FirstName, @LastName, UserName, IsAdmin);
+			VALUES ( @FirstName, @LastName, @UserName, @IsAdmin);
 		END
 	END
 END
@@ -260,13 +262,13 @@ GO
 -- CREATE PROCEDURE User_GetDetails
 -- CREATE PROCEDURE Student_EvalForm -- ( Return either StudentEval OR PeerEval from 2 students)
 -- CREATE PROCEDURE Student_InsertEval
--- CREATE PROCEDURE Student_GetAvgScore
+-- CREATE PROCEDURE Student_GetAvgScore -- (Average for each section, separate for peer, team, studenteval)
 -- CREATE PROCEDURE Student_GetComments
 -- CREATE PROCEDURE Student_GetComments
 -- CREATE PROCEDURE Students_GetNames
 -- CREATE PROCEDURE Team_Delete
--- CREATE PROCEDURE Team_RemoveStudent
--- CREATE PROCEDURE Team_GetStudents
+-- CREATE PROCEDURE Team_RemoveStudent -- admin only
+-- CREATE PROCEDURE Team_GetStudents -- (pass in teamid for now)
 -- CREATE PROCEDURE Team_EvalForm
 -- CREATE PROCEDURE Team_InsertEval
 -- CREATE PROCEDURE Team_GetAvgScore
