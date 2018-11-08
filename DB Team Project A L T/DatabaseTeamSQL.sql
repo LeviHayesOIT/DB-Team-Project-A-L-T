@@ -265,7 +265,7 @@ GO
 -- CREATE PROCEDURE Student_GetAvgScore -- (Average for each section, separate for peer, team, studenteval)
 -- CREATE PROCEDURE Student_GetComments
 -- CREATE PROCEDURE Student_GetComments
--- CREATE PROCEDURE Students_GetNames
+-- CREATE PROCEDURE Students_GetStudents -- Returns id and name (preferredname, lastname), excluding the student themselves and all admins. If calling student is null, list everyone, not including admins.
 -- CREATE PROCEDURE Team_Delete
 -- CREATE PROCEDURE Team_RemoveStudent -- admin only
 -- CREATE PROCEDURE Team_GetStudents -- (pass in teamid for now)
