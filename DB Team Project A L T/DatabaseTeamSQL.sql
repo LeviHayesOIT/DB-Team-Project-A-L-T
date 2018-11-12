@@ -10,7 +10,6 @@
 -- 2 users: 
 	-- 1. Database Manager ( all priveleges )
 	-- 2. Server User ( possible IsAdmin )
-	-- 1. Database Manager ( all priveleges )
 
 use master;
 GO
